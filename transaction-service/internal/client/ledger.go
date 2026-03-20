@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,6 +48,37 @@ func (c *LedgerClient) Transfer(
 			StatusCode: http.StatusBadGateway,
 			Code:       "LEDGER_RESPONSE_INVALID",
 			Message:    "Ledger service returned an empty transaction",
+		}
+	}
+
+	return *response.Data, nil
+}
+
+func (c *LedgerClient) ListTransactions(
+	ctx context.Context,
+	correlationID string,
+	page int,
+	limit int,
+) (model.TransactionHistoryPage, *model.AppError) {
+	query := url.Values{}
+	query.Set("page", strconv.Itoa(page))
+	query.Set("limit", strconv.Itoa(limit))
+
+	response := model.LedgerTransactionsEnvelope{}
+	if err := c.httpClient.getJSON(ctx, "/ledger/transactions", correlationID, query, &response); err != nil {
+		err.Message = "Ledger service request failed"
+		if err.StatusCode == http.StatusServiceUnavailable {
+			err.Code = "LEDGER_SERVICE_UNAVAILABLE"
+		}
+
+		return model.TransactionHistoryPage{}, err
+	}
+
+	if response.Data == nil {
+		return model.TransactionHistoryPage{}, &model.AppError{
+			StatusCode: http.StatusBadGateway,
+			Code:       "LEDGER_RESPONSE_INVALID",
+			Message:    "Ledger service returned an empty transaction page",
 		}
 	}
 

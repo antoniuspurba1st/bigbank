@@ -36,3 +36,14 @@ data class TransactionListItem(
     val status: String,
     val createdAt: Instant,
 )
+
+@JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy::class)
+data class TransactionPageResponse(
+    val items: List<TransactionListItem>,
+    val page: Int,
+    val limit: Int,
+    val totalItems: Long,
+    val totalPages: Int,
+    val hasNext: Boolean,
+    val hasPrevious: Boolean,
+)

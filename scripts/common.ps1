@@ -14,6 +14,42 @@ function Get-ToolPath {
     return (Get-Command $Name -ErrorAction Stop).Source
 }
 
+function Import-EnvFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path $Path)) {
+        return
+    }
+
+    foreach ($line in Get-Content $Path) {
+        $trimmed = $line.Trim()
+        if ($trimmed -eq '' -or $trimmed.StartsWith('#')) {
+            continue
+        }
+
+        $parts = $trimmed -split '=', 2
+        if ($parts.Count -ne 2) {
+            continue
+        }
+
+        $name = $parts[0].Trim()
+        $value = $parts[1].Trim().Trim('"').Trim("'")
+        Set-Item -Path "Env:$name" -Value $value
+    }
+}
+
+function Get-ProcessRegistryPath {
+    $runtimeDir = Join-Path (Get-DDBankRoot) '.runtime'
+    if (-not (Test-Path $runtimeDir)) {
+        New-Item -ItemType Directory -Path $runtimeDir | Out-Null
+    }
+
+    return Join-Path $runtimeDir 'ddbank-processes.json'
+}
+
 function Wait-Http {
     param(
         [Parameter(Mandatory = $true)]
@@ -82,32 +118,23 @@ function Start-DDBankStack {
     $ledgerPath = Join-Path $root 'ls_springboot'
     $transactionPath = Join-Path $root 'transaction-service'
     $fraudPath = Join-Path $root 'fraud-service'
-    $cargoExe = Get-ToolPath -Name 'cargo'
-    $goExe = Get-ToolPath -Name 'go'
+    $scriptsPath = Join-Path $root 'scripts'
+    $powershellExe = Get-ToolPath -Name 'powershell'
 
     $ledgerJob = Start-Job -ScriptBlock {
-        param($path, $port)
-        Set-Location $path
-        $env:GRADLE_USER_HOME = Join-Path (Get-Location) '.gradle'
-        & .\gradlew.bat bootRun --no-daemon --console=plain --args="--server.port=$port"
-    } -ArgumentList $ledgerPath, $LedgerPort
+        param($exe, $scriptPath, $port)
+        & $exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Port $port
+    } -ArgumentList $powershellExe, (Join-Path $scriptsPath 'run-ledger.ps1'), $LedgerPort
 
     $fraudJob = Start-Job -ScriptBlock {
-        param($exe, $path, $port)
-        Set-Location $path
-        $env:PORT = $port.ToString()
-        & $exe run
-    } -ArgumentList $cargoExe, $fraudPath, $FraudPort
+        param($exe, $scriptPath, $port)
+        & $exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Port $port
+    } -ArgumentList $powershellExe, (Join-Path $scriptsPath 'run-fraud.ps1'), $FraudPort
 
     $goJob = Start-Job -ScriptBlock {
-        param($exe, $path, $port, $fraudUrl, $ledgerUrl)
-        Set-Location $path
-        $env:PORT = $port.ToString()
-        $env:FRAUD_SERVICE_URL = $fraudUrl
-        $env:LEDGER_SERVICE_URL = $ledgerUrl
-        $env:GOCACHE = Join-Path (Get-Location) '.gocache'
-        & $exe run ./cmd/main.go
-    } -ArgumentList $goExe, $transactionPath, $TransactionPort, "http://127.0.0.1:$FraudPort", "http://127.0.0.1:$LedgerPort"
+        param($exe, $scriptPath, $port, $fraudUrl, $ledgerUrl)
+        & $exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath -Port $port -FraudServiceUrl $fraudUrl -LedgerServiceUrl $ledgerUrl
+    } -ArgumentList $powershellExe, (Join-Path $scriptsPath 'run-transaction.ps1'), $TransactionPort, "http://127.0.0.1:$FraudPort", "http://127.0.0.1:$LedgerPort"
 
     return [pscustomobject]@{
         Root            = $root
@@ -118,6 +145,22 @@ function Start-DDBankStack {
         FraudJob        = $fraudJob
         GoJob           = $goJob
     }
+}
+
+function Start-DDBankUiJob {
+    param(
+        [int]$UiPort = 3000,
+        [int]$TransactionPort = 18081
+    )
+
+    $root = Get-DDBankRoot
+    $powershellExe = Get-ToolPath -Name 'powershell'
+    $scriptPath = Join-Path $root 'scripts\run-ui.ps1'
+
+    return Start-Job -ScriptBlock {
+        param($exe, $filePath, $port, $transactionServiceUrl)
+        & $exe -NoProfile -ExecutionPolicy Bypass -File $filePath -Port $port -TransactionServiceUrl $transactionServiceUrl
+    } -ArgumentList $powershellExe, $scriptPath, $UiPort, "http://127.0.0.1:$TransactionPort"
 }
 
 function Wait-DDBankReady {

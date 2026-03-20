@@ -1,5 +1,6 @@
 package com.bigbank.ledger.service
 
+import com.bigbank.ledger.api.TransactionPageResponse
 import com.bigbank.ledger.api.TransactionListItem
 import com.bigbank.ledger.repository.LedgerTransactionRepository
 import org.springframework.data.domain.PageRequest
@@ -12,10 +13,15 @@ class LedgerQueryService(
 ) {
 
     @Transactional(readOnly = true)
-    fun listTransactions(limit: Int = DEFAULT_LIMIT): List<TransactionListItem> {
+    fun listTransactions(page: Int = DEFAULT_PAGE, limit: Int = DEFAULT_LIMIT): TransactionPageResponse {
+        val sanitizedPage = page.coerceAtLeast(0)
         val sanitizedLimit = limit.coerceIn(1, MAX_LIMIT)
+        val transactionPage = ledgerTransactionRepository.findAllByOrderByCreatedAtDesc(
+            PageRequest.of(sanitizedPage, sanitizedLimit),
+        )
 
-        return ledgerTransactionRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(0, sanitizedLimit))
+        return TransactionPageResponse(
+            items = transactionPage.content
             .map { transaction ->
                 TransactionListItem(
                     transactionId = transaction.id ?: error("transaction id must be assigned"),
@@ -26,10 +32,18 @@ class LedgerQueryService(
                     status = transaction.status.name,
                     createdAt = transaction.createdAt,
                 )
-            }
+            },
+            page = sanitizedPage,
+            limit = sanitizedLimit,
+            totalItems = transactionPage.totalElements,
+            totalPages = transactionPage.totalPages,
+            hasNext = transactionPage.hasNext(),
+            hasPrevious = transactionPage.hasPrevious(),
+        )
     }
 
     companion object {
+        const val DEFAULT_PAGE = 0
         const val DEFAULT_LIMIT = 50
         const val MAX_LIMIT = 200
     }

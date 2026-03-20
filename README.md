@@ -163,5 +163,24 @@ End-to-end smoke validation confirms:
 
 - small transfers succeed through Go -> Rust -> Kotlin -> PostgreSQL
 - large transfers are rejected by fraud rules
-- duplicate requests with the same `reference` return the original transaction safely
 - `ledger_transactions.reference` is enforced as unique in PostgreSQL
+
+## UI Product Upgrade
+
+The `ui` module has been upgraded from a prototype mock to a full, production-like dashboard:
+
+- **Auth Connect:** Real postgres-backed authentication with bcrypt password hashing via Go `transaction-service`.
+- **Protected Routes:** Complete user-session management intercepting unauthenticated requests.
+- **UX Hardening:** Prevents double submissions and provides beautiful, animated UI feedback banners.
+- **Settings & Demo Support:** Dynamic user profile configuration and presentation-ready demo environment capabilities.
+
+### Screenshots
+
+**Login**
+![Login](ui-login.png)
+
+**Dashboard**
+![Dashboard](ui-dashboard.png)
+
+**Settings**
+![Settings](ui-settings.png)

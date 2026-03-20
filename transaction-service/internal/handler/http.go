@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"transaction-service/internal/model"
@@ -13,19 +14,42 @@ import (
 )
 
 type HTTPHandler struct {
-	transferService *service.TransferService
+	transferService      *service.TransferService
+	transactionQueryServ *service.TransactionQueryService
+	authHandler          *AuthHandler
+	observability        *observabilityMiddleware
 }
 
-func NewHTTPHandler(transferService *service.TransferService) *HTTPHandler {
-	return &HTTPHandler{transferService: transferService}
+func NewHTTPHandler(
+	transferService *service.TransferService,
+	transactionQueryService *service.TransactionQueryService,
+	authHandler *AuthHandler,
+) *HTTPHandler {
+	return &HTTPHandler{
+		transferService:      transferService,
+		transactionQueryServ: transactionQueryService,
+		authHandler:          authHandler,
+		observability:        newObservabilityMiddleware(),
+	}
 }
 
 func (h *HTTPHandler) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", h.handleHealth)
+	
+	// Transaction routes
 	mux.HandleFunc("/transfer", h.handleTransfer)
+	mux.HandleFunc("/transactions", h.handleTransactions)
 
-	return mux
+	// Auth routes
+	if h.authHandler != nil {
+		mux.HandleFunc("/auth/register", h.authHandler.HandleRegister)
+		mux.HandleFunc("/auth/login", h.authHandler.HandleLogin)
+		mux.HandleFunc("/auth/phone", h.authHandler.HandleUpdatePhone)
+		// /auth/email and /auth/password would go here following the same pattern
+	}
+
+	return h.observability.wrap(corsMiddleware(mux))
 }
 
 func (h *HTTPHandler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +103,40 @@ func (h *HTTPHandler) handleTransfer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+func (h *HTTPHandler) handleTransactions(w http.ResponseWriter, r *http.Request) {
+	correlationID := correlationIDFromRequest(r)
+	w.Header().Set("X-Correlation-Id", correlationID)
+
+	if r.Method != http.MethodGet {
+		writeError(w, correlationID, &model.AppError{
+			StatusCode: http.StatusMethodNotAllowed,
+			Code:       "METHOD_NOT_ALLOWED",
+			Message:    "Only GET /transactions is supported",
+		})
+		return
+	}
+
+	page, err := parseIntQuery(r, "page", 0)
+	if err != nil {
+		writeError(w, correlationID, err)
+		return
+	}
+
+	limit, err := parseIntQuery(r, "limit", serviceDefaultTransactionLimit())
+	if err != nil {
+		writeError(w, correlationID, err)
+		return
+	}
+
+	response, appErr := h.transactionQueryServ.ListTransactions(r.Context(), correlationID, page, limit)
+	if appErr != nil {
+		writeError(w, correlationID, appErr)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
 func writeError(w http.ResponseWriter, correlationID string, appErr *model.AppError) {
 	log.Printf(
 		"correlation_id=%s event=request_failed code=%s status=%d error=%s",
@@ -117,4 +175,50 @@ func correlationIDFromRequest(r *http.Request) string {
 	}
 
 	return hex.EncodeToString(buffer)
+}
+
+func parseIntQuery(r *http.Request, key string, fallback int) (int, *model.AppError) {
+	rawValue := strings.TrimSpace(r.URL.Query().Get(key))
+	if rawValue == "" {
+		return fallback, nil
+	}
+
+	parsed, err := strconv.Atoi(rawValue)
+	if err != nil {
+		return 0, &model.AppError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "INVALID_QUERY",
+			Message:    key + " must be a valid integer",
+			Err:        err,
+		}
+	}
+
+	if parsed < 0 {
+		return 0, &model.AppError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "INVALID_QUERY",
+			Message:    key + " must not be negative",
+		}
+	}
+
+	return parsed, nil
+}
+
+func serviceDefaultTransactionLimit() int {
+	return 10
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Correlation-Id, X-User-Email")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

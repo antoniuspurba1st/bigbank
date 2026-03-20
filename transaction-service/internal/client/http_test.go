@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -145,5 +146,32 @@ func TestLedgerClientRejectsEmptyResponseData(t *testing.T) {
 
 	if err.Code != "LEDGER_RESPONSE_INVALID" {
 		t.Fatalf("expected LEDGER_RESPONSE_INVALID, got %s", err.Code)
+	}
+}
+
+func TestGetJSONReadsPagedTransactions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") != "1" {
+			t.Fatalf("expected page query to be forwarded")
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"success","message":"ok","correlation_id":"corr-page","data":{"items":[],"page":1,"limit":5,"total_items":0,"total_pages":0,"has_next":false,"has_previous":true}}`))
+	}))
+	defer server.Close()
+
+	httpClient := newJSONHTTPClient(server.URL, time.Second, 0)
+	response := model.LedgerTransactionsEnvelope{}
+	query := url.Values{}
+	query.Set("page", "1")
+	query.Set("limit", "5")
+
+	err := httpClient.getJSON(context.Background(), "/ledger/transactions", "corr-page", query, &response)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if response.Data == nil || response.Data.Page != 1 {
+		t.Fatal("expected paged transaction response")
 	}
 }

@@ -1,6 +1,7 @@
 package com.bigbank.ledger.repository
 
 import com.bigbank.ledger.domain.LedgerTransaction
+import org.springframework.data.domain.Page
 import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.domain.Pageable
@@ -11,5 +12,5 @@ interface LedgerTransactionRepository : JpaRepository<LedgerTransaction, UUID> {
     fun findByReference(reference: String): LedgerTransaction?
 
     @EntityGraph(attributePaths = ["fromAccount", "toAccount"])
-    fun findAllByOrderByCreatedAtDesc(pageable: Pageable): List<LedgerTransaction>
+    fun findAllByOrderByCreatedAtDesc(pageable: Pageable): Page<LedgerTransaction>
 }

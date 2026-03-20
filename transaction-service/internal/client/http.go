@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -65,6 +66,81 @@ func (c *jsonHTTPClient) postJSON(
 		}
 
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Correlation-Id", correlationID)
+
+		resp, callErr := c.client.Do(req)
+		if callErr != nil {
+			if attempt < c.retries {
+				time.Sleep(backoff(attempt))
+				continue
+			}
+
+			return &model.AppError{
+				StatusCode: http.StatusServiceUnavailable,
+				Code:       "DOWNSTREAM_UNAVAILABLE",
+				Message:    "Downstream service is unavailable",
+				Err:        callErr,
+			}
+		}
+
+		readErr := decodeResponse(resp, output)
+		if readErr == nil {
+			return nil
+		}
+
+		var appErr *model.AppError
+		if errors.As(readErr, &appErr) {
+			if appErr.StatusCode >= http.StatusInternalServerError && attempt < c.retries {
+				time.Sleep(backoff(attempt))
+				continue
+			}
+
+			return appErr
+		}
+
+		return &model.AppError{
+			StatusCode: http.StatusBadGateway,
+			Code:       "DOWNSTREAM_RESPONSE_INVALID",
+			Message:    "Failed to decode downstream response",
+			Err:        readErr,
+		}
+	}
+
+	return &model.AppError{
+		StatusCode: http.StatusBadGateway,
+		Code:       "DOWNSTREAM_RESPONSE_INVALID",
+		Message:    "Downstream response failed after retries",
+	}
+}
+
+func (c *jsonHTTPClient) getJSON(
+	ctx context.Context,
+	path string,
+	correlationID string,
+	query url.Values,
+	output interface{},
+) *model.AppError {
+	urlValue := c.baseURL + path
+	if len(query) > 0 {
+		urlValue += "?" + query.Encode()
+	}
+
+	for attempt := 0; attempt <= c.retries; attempt++ {
+		req, requestErr := http.NewRequestWithContext(
+			ctx,
+			http.MethodGet,
+			urlValue,
+			nil,
+		)
+		if requestErr != nil {
+			return &model.AppError{
+				StatusCode: http.StatusInternalServerError,
+				Code:       "REQUEST_BUILD_FAILED",
+				Message:    "Failed to build downstream request",
+				Err:        requestErr,
+			}
+		}
+
 		req.Header.Set("X-Correlation-Id", correlationID)
 
 		resp, callErr := c.client.Do(req)

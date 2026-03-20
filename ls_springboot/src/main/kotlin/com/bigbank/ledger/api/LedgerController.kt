@@ -44,15 +44,19 @@ class LedgerController(
     @GetMapping("/transactions")
     fun transactions(
         httpRequest: HttpServletRequest,
+        @RequestParam(name = "page", required = false) page: Int?,
         @RequestParam(name = "limit", required = false) limit: Int?,
-    ): ApiResponse<List<TransactionListItem>> {
+    ): ApiResponse<TransactionPageResponse> {
         val correlationId = httpRequest.getAttribute(CorrelationIdFilter.CORRELATION_ID_ATTRIBUTE) as String
 
         return ApiResponse(
             status = "success",
             message = "Transactions fetched successfully",
             correlationId = correlationId,
-            data = ledgerQueryService.listTransactions(limit ?: LedgerQueryService.DEFAULT_LIMIT),
+            data = ledgerQueryService.listTransactions(
+                page = page ?: LedgerQueryService.DEFAULT_PAGE,
+                limit = limit ?: LedgerQueryService.DEFAULT_LIMIT,
+            ),
         )
     }
 }

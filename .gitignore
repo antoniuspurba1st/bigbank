@@ -17,6 +17,8 @@ transaction-service/pkg/
 transaction-service/.gocache/
 transaction-service/*.exe
 transaction-service/*.out
+ui/node_modules/
+ui/.next/
 
 # =========================
 # RUST (fraud-service)
@@ -47,3 +49,4 @@ ls_springboot/out/
 # =========================
 tmp/
 temp/
+.runtime/

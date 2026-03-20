@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"transaction-service/internal/model"
@@ -21,6 +22,11 @@ type TransferService struct {
 	fraudClient  fraudChecker
 	ledgerClient ledgerTransferer
 }
+
+var (
+	referencePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+	accountPattern   = regexp.MustCompile(`^[A-Z0-9-]{3,32}$`)
+)
 
 func NewTransferService(fraudClient fraudChecker, ledgerClient ledgerTransferer) *TransferService {
 	return &TransferService{
@@ -131,8 +137,12 @@ func normalizeAndValidate(request model.TransferRequest) (model.TransferRequest,
 		return model.TransferRequest{}, validationError("INVALID_REFERENCE", "Reference is required")
 	case len(normalized.Reference) > 128:
 		return model.TransferRequest{}, validationError("INVALID_REFERENCE", "Reference is too long")
+	case !referencePattern.MatchString(normalized.Reference):
+		return model.TransferRequest{}, validationError("INVALID_REFERENCE", "Reference contains unsupported characters")
 	case normalized.FromAccount == "" || normalized.ToAccount == "":
 		return model.TransferRequest{}, validationError("INVALID_ACCOUNT", "Both accounts are required")
+	case !accountPattern.MatchString(normalized.FromAccount) || !accountPattern.MatchString(normalized.ToAccount):
+		return model.TransferRequest{}, validationError("INVALID_ACCOUNT", "Account format is invalid")
 	case normalized.FromAccount == normalized.ToAccount:
 		return model.TransferRequest{}, validationError("SAME_ACCOUNT_TRANSFER", "Source and destination accounts must differ")
 	case normalized.Amount <= 0:

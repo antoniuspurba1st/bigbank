@@ -174,10 +174,11 @@ class LedgerApplicationTests(
             )
         }
 
-        val transactions = ledgerQueryService.listTransactions(limit = 1)
+        val transactions = ledgerQueryService.listTransactions(page = 0, limit = 1)
 
-        assertEquals(1, transactions.size)
-        assertEquals("ref-list-2", transactions[0].reference)
+        assertEquals(1, transactions.items.size)
+        assertEquals(3, transactions.totalItems)
+        assertEquals("ref-list-2", transactions.items[0].reference)
     }
 
     @Test

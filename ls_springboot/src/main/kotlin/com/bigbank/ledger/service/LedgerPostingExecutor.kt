@@ -65,6 +65,13 @@ class LedgerPostingExecutor(
         ledgerTransferPersistenceHook.beforeJournalPersist(savedTransaction, listOf(debitEntry, creditEntry))
         journalEntryRepository.saveAll(listOf(debitEntry, creditEntry))
 
+        logger.info(
+            "transaction_event_emitting reference={} transactionId={} correlationId={}",
+            savedTransaction.reference,
+            savedTransaction.id,
+            correlationId,
+        )
+
         eventPublisher.publishEvent(
             TransactionCompletedEvent(
                 transactionId = savedTransaction.id ?: error("transaction id must be assigned"),

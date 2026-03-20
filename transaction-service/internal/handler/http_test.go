@@ -30,12 +30,22 @@ func (stub *ledgerTransfererStub) Transfer(_ context.Context, _ string, _ model.
 	return stub.result, stub.err
 }
 
+type ledgerReaderStub struct {
+	page model.TransactionHistoryPage
+	err  *model.AppError
+}
+
+func (stub *ledgerReaderStub) ListTransactions(_ context.Context, _ string, _ int, _ int) (model.TransactionHistoryPage, *model.AppError) {
+	return stub.page, stub.err
+}
+
 func TestHandleTransferRejectsMalformedJSON(t *testing.T) {
 	handler := NewHTTPHandler(
 		service.NewTransferService(
 			&fraudCheckerStub{},
 			&ledgerTransfererStub{},
 		),
+		service.NewTransactionQueryService(&ledgerReaderStub{}),
 	)
 
 	request := httptest.NewRequest(http.MethodPost, "/transfer", strings.NewReader(`{"reference":`))
@@ -64,6 +74,7 @@ func TestHandleTransferRejectsUnknownField(t *testing.T) {
 			&fraudCheckerStub{},
 			&ledgerTransfererStub{},
 		),
+		service.NewTransactionQueryService(&ledgerReaderStub{}),
 	)
 
 	request := httptest.NewRequest(
@@ -87,6 +98,7 @@ func TestHandleHealthSetsCorrelationID(t *testing.T) {
 			&fraudCheckerStub{},
 			&ledgerTransfererStub{},
 		),
+		service.NewTransactionQueryService(&ledgerReaderStub{}),
 	)
 
 	request := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -100,5 +112,68 @@ func TestHandleHealthSetsCorrelationID(t *testing.T) {
 
 	if response.Header().Get("X-Correlation-Id") == "" {
 		t.Fatal("expected X-Correlation-Id header")
+	}
+}
+
+func TestHandleTransactionsReturnsPagedHistory(t *testing.T) {
+	handler := NewHTTPHandler(
+		service.NewTransferService(
+			&fraudCheckerStub{},
+			&ledgerTransfererStub{},
+		),
+		service.NewTransactionQueryService(&ledgerReaderStub{
+			page: model.TransactionHistoryPage{
+				Items: []model.TransactionHistoryItem{
+					{
+						TransactionID: "tx-1",
+						Reference:     "ref-1",
+						FromAccount:   "ACC-001",
+						ToAccount:     "ACC-002",
+						Amount:        42.5,
+						Status:        "COMPLETED",
+						CreatedAt:     "2026-03-20T10:00:00Z",
+					},
+				},
+				Page:        0,
+				Limit:       10,
+				TotalItems:  1,
+				TotalPages:  1,
+				HasNext:     false,
+				HasPrevious: false,
+			},
+		}),
+	)
+
+	request := httptest.NewRequest(http.MethodGet, "/transactions?page=0&limit=10", nil)
+	response := httptest.NewRecorder()
+
+	handler.Routes().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", response.Code)
+	}
+
+	apiResponse := model.APIResponse{}
+	if err := json.Unmarshal(response.Body.Bytes(), &apiResponse); err != nil {
+		t.Fatalf("expected valid api response json, got %v", err)
+	}
+}
+
+func TestHandleTransactionsRejectsNegativePage(t *testing.T) {
+	handler := NewHTTPHandler(
+		service.NewTransferService(
+			&fraudCheckerStub{},
+			&ledgerTransfererStub{},
+		),
+		service.NewTransactionQueryService(&ledgerReaderStub{}),
+	)
+
+	request := httptest.NewRequest(http.MethodGet, "/transactions?page=-1", nil)
+	response := httptest.NewRecorder()
+
+	handler.Routes().ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", response.Code)
 	}
 }

@@ -18,6 +18,9 @@ class LedgerCommandService(
     private val ledgerTransactionRepository: LedgerTransactionRepository,
     private val ledgerPostingExecutor: LedgerPostingExecutor,
 ) {
+    private val referencePattern = Regex("^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+    private val accountPattern = Regex("^[A-Z0-9-]{3,32}$")
+
     fun transfer(request: LedgerTransferRequest, correlationId: String): LedgerTransferResponse {
         val command = normalize(request)
         validate(command)
@@ -66,8 +69,14 @@ class LedgerCommandService(
         if (command.reference.length > 128) {
             throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_REFERENCE", "Reference is too long")
         }
+        if (!referencePattern.matches(command.reference)) {
+            throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_REFERENCE", "Reference contains unsupported characters")
+        }
         if (command.fromAccount.isBlank() || command.toAccount.isBlank()) {
             throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ACCOUNT", "Both accounts are required")
+        }
+        if (!accountPattern.matches(command.fromAccount) || !accountPattern.matches(command.toAccount)) {
+            throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ACCOUNT", "Account format is invalid")
         }
         if (command.fromAccount == command.toAccount) {
             throw ApiException(HttpStatus.BAD_REQUEST, "SAME_ACCOUNT_TRANSFER", "Source and destination accounts must differ")

@@ -7,7 +7,7 @@ use std::env;
 use uuid::Uuid;
 
 const CORRELATION_ID_HEADER: &str = "X-Correlation-Id";
-const FRAUD_REJECTION_LIMIT: f64 = 1_000_000.0;
+const DEFAULT_FRAUD_REJECTION_LIMIT: f64 = 1_000_000.0;
 
 #[derive(Deserialize)]
 struct FraudRequest {
@@ -91,11 +91,12 @@ async fn fraud_check(request: HttpRequest, body: web::Json<FraudRequest>) -> Htt
         normalized.amount,
     );
 
-    let decision = if normalized.amount > FRAUD_REJECTION_LIMIT {
+    let threshold = fraud_rejection_limit();
+    let decision = if normalized.amount > threshold {
         FraudDecision {
             decision: "rejected".to_string(),
             approved: false,
-            reason: "Amount exceeds fraud threshold".to_string(),
+            reason: format!("Amount exceeds fraud threshold {:.2}", threshold),
             checked_at: Utc::now().to_rfc3339(),
         }
     } else {
@@ -117,6 +118,15 @@ async fn fraud_check(request: HttpRequest, body: web::Json<FraudRequest>) -> Htt
     } else {
         "Fraud check rejected"
     };
+
+    info!(
+        "correlation_id={} event=fraud_decided reference={} decision={} approved={} reason=\"{}\"",
+        correlation_id,
+        normalized.reference,
+        decision.decision,
+        decision.approved,
+        decision.reason,
+    );
 
     HttpResponse::Ok()
         .insert_header((CORRELATION_ID_HEADER, correlation_id.clone()))
@@ -142,8 +152,17 @@ fn normalize_request(
     if reference.len() > 128 {
         return Err(("INVALID_REFERENCE", "Reference is too long"));
     }
+    if !is_valid_reference(&reference) {
+        return Err((
+            "INVALID_REFERENCE",
+            "Reference contains unsupported characters",
+        ));
+    }
     if from_account.is_empty() || to_account.is_empty() {
         return Err(("INVALID_ACCOUNT", "Both accounts are required"));
+    }
+    if !is_valid_account(&from_account) || !is_valid_account(&to_account) {
+        return Err(("INVALID_ACCOUNT", "Account format is invalid"));
     }
     if from_account == to_account {
         return Err((
@@ -174,11 +193,47 @@ fn correlation_id(request: &HttpRequest) -> String {
         .unwrap_or_else(|| Uuid::new_v4().to_string())
 }
 
+fn is_valid_reference(reference: &str) -> bool {
+    let mut chars = reference.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+
+    if !first.is_ascii_alphanumeric() {
+        return false;
+    }
+
+    chars.all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
+}
+
+fn is_valid_account(account: &str) -> bool {
+    let length = account.len();
+    if !(3..=32).contains(&length) {
+        return false;
+    }
+
+    account
+        .chars()
+        .all(|character| character.is_ascii_uppercase() || character.is_ascii_digit() || character == '-')
+}
+
+fn fraud_rejection_limit() -> f64 {
+    env::var("FRAUD_REJECTION_LIMIT")
+        .ok()
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|value| *value > 0.0)
+        .unwrap_or(DEFAULT_FRAUD_REJECTION_LIMIT)
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
     let port = env::var("PORT").unwrap_or_else(|_| "8082".to_string());
-    println!("Fraud Service running on :{}", port);
+    let threshold = fraud_rejection_limit();
+    info!(
+        "event=fraud_service_started port={} fraud_rejection_limit={}",
+        port, threshold
+    );
 
     HttpServer::new(|| {
         App::new()
@@ -254,5 +309,26 @@ mod tests {
 
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(body["code"], "SAME_ACCOUNT_TRANSFER");
+    }
+
+    #[actix_web::test]
+    async fn rejects_invalid_reference_characters() {
+        let app = test::init_service(App::new().service(fraud_check)).await;
+        let request = test::TestRequest::post()
+            .uri("/fraud/check")
+            .set_json(serde_json::json!({
+                "reference": "bad ref!",
+                "from_account": "ACC-001",
+                "to_account": "ACC-002",
+                "amount": 10.00
+            }))
+            .to_request();
+
+        let response = test::call_service(&app, request).await;
+        let status = response.status();
+        let body: serde_json::Value = test::read_body_json(response).await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["code"], "INVALID_REFERENCE");
     }
 }
