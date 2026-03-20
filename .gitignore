@@ -1,0 +1,48 @@
+# =========================
+# GENERAL
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# VSCODE
+# =========================
+.vscode/
+
+# =========================
+# GO (transaction-service)
+# =========================
+transaction-service/bin/
+transaction-service/pkg/
+transaction-service/*.exe
+transaction-service/*.out
+
+# =========================
+# RUST (fraud-service)
+# =========================
+fraud-service/target/
+fraud-service/**/*.rs.bk
+
+# =========================
+# KOTLIN / SPRING (ledger)
+# =========================
+ls_springboot/build/
+ls_springboot/.gradle/
+ls_springboot/out/
+
+# =========================
+# ENV FILES
+# =========================
+.env
+.env.*
+
+# =========================
+# LOGS
+# =========================
+*.log
+
+# =========================
+# TEMP FILES
+# =========================
+tmp/
+temp/
