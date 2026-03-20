@@ -8,6 +8,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
@@ -16,7 +17,14 @@ import java.time.Instant
 import java.util.UUID
 
 @Entity
-@Table(name = "journal_entries")
+@Table(
+    name = "journal_entries",
+    indexes = [
+        Index(name = "idx_journal_entries_transaction", columnList = "transaction_id"),
+        Index(name = "idx_journal_entries_account", columnList = "account_id"),
+        Index(name = "idx_journal_entries_created_at", columnList = "created_at"),
+    ],
+)
 class JournalEntry(
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

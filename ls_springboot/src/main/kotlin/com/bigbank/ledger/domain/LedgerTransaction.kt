@@ -8,6 +8,7 @@ import jakarta.persistence.FetchType
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.JoinColumn
 import jakarta.persistence.ManyToOne
 import jakarta.persistence.Table
@@ -16,7 +17,14 @@ import java.time.Instant
 import java.util.UUID
 
 @Entity
-@Table(name = "ledger_transactions")
+@Table(
+    name = "ledger_transactions",
+    indexes = [
+        Index(name = "idx_ledger_transactions_created_at", columnList = "created_at"),
+        Index(name = "idx_ledger_transactions_from_account", columnList = "from_account_id"),
+        Index(name = "idx_ledger_transactions_to_account", columnList = "to_account_id"),
+    ],
+)
 class LedgerTransaction(
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

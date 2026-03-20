@@ -2,19 +2,13 @@ package com.bigbank.ledger.service
 
 import com.bigbank.ledger.api.LedgerTransferRequest
 import com.bigbank.ledger.api.LedgerTransferResponse
-import com.bigbank.ledger.domain.EntryType
-import com.bigbank.ledger.domain.JournalEntry
 import com.bigbank.ledger.domain.LedgerTransaction
-import com.bigbank.ledger.event.TransactionCompletedEvent
 import com.bigbank.ledger.repository.AccountRepository
-import com.bigbank.ledger.repository.JournalEntryRepository
 import com.bigbank.ledger.repository.LedgerTransactionRepository
-import org.slf4j.LoggerFactory
-import org.springframework.context.ApplicationEventPublisher
-import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.dao.DataAccessException
 import org.springframework.http.HttpStatus
+import org.springframework.orm.jpa.JpaSystemException
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -22,13 +16,8 @@ import java.math.RoundingMode
 class LedgerCommandService(
     private val accountRepository: AccountRepository,
     private val ledgerTransactionRepository: LedgerTransactionRepository,
-    private val journalEntryRepository: JournalEntryRepository,
-    private val eventPublisher: ApplicationEventPublisher,
+    private val ledgerPostingExecutor: LedgerPostingExecutor,
 ) {
-
-    private val logger = LoggerFactory.getLogger(javaClass)
-
-    @Transactional
     fun transfer(request: LedgerTransferRequest, correlationId: String): LedgerTransferResponse {
         val command = normalize(request)
         validate(command)
@@ -46,70 +35,23 @@ class LedgerCommandService(
             throw ApiException(HttpStatus.BAD_REQUEST, "SAME_ACCOUNT_TRANSFER", "Source and destination accounts must differ")
         }
 
-        val transaction = LedgerTransaction(
-            reference = command.reference,
-            fromAccount = fromAccount,
-            toAccount = toAccount,
-            amount = command.amount,
-            correlationId = correlationId,
-        )
-
-        val savedTransaction = try {
-            ledgerTransactionRepository.saveAndFlush(transaction)
-        } catch (_: DataIntegrityViolationException) {
-            val existing = ledgerTransactionRepository.findByReference(command.reference)
-                ?: throw ApiException(HttpStatus.CONFLICT, "REFERENCE_CONFLICT", "Transfer reference already exists")
-            return toIdempotentResponse(existing, command)
+        return try {
+            ledgerPostingExecutor.postTransfer(command, correlationId)
+        } catch (ex: DataAccessException) {
+            resolvePersistenceConflict(command, ex)
+        } catch (ex: JpaSystemException) {
+            resolvePersistenceConflict(command, ex)
         }
-
-        val debitEntry = JournalEntry(
-            transaction = savedTransaction,
-            account = fromAccount,
-            entryType = EntryType.DEBIT,
-            amount = command.amount,
-        )
-        val creditEntry = JournalEntry(
-            transaction = savedTransaction,
-            account = toAccount,
-            entryType = EntryType.CREDIT,
-            amount = command.amount,
-        )
-
-        enforceBalancedEntries(listOf(debitEntry, creditEntry))
-        journalEntryRepository.saveAll(listOf(debitEntry, creditEntry))
-
-        eventPublisher.publishEvent(
-            TransactionCompletedEvent(
-                transactionId = savedTransaction.id ?: error("transaction id must be assigned"),
-                reference = savedTransaction.reference,
-                fromAccount = fromAccount.accountNumber,
-                toAccount = toAccount.accountNumber,
-                amount = savedTransaction.amount,
-                correlationId = correlationId,
-                createdAt = savedTransaction.createdAt,
-            ),
-        )
-
-        logger.info(
-            "transfer_posted reference={} amount={} fromAccount={} toAccount={} correlationId={}",
-            savedTransaction.reference,
-            savedTransaction.amount,
-            fromAccount.accountNumber,
-            toAccount.accountNumber,
-            correlationId,
-        )
-
-        return savedTransaction.toResponse(duplicate = false)
     }
 
-    private fun normalize(request: LedgerTransferRequest): TransferCommand {
+    private fun normalize(request: LedgerTransferRequest): LedgerTransferCommand {
         val reference = request.reference?.trim().orEmpty()
         val fromAccount = request.fromAccount?.trim().orEmpty()
         val toAccount = request.toAccount?.trim().orEmpty()
         val amount = request.amount?.setScale(2, RoundingMode.HALF_UP)
             ?: throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_AMOUNT", "Amount is required")
 
-        return TransferCommand(
+        return LedgerTransferCommand(
             reference = reference,
             fromAccount = fromAccount,
             toAccount = toAccount,
@@ -117,7 +59,7 @@ class LedgerCommandService(
         )
     }
 
-    private fun validate(command: TransferCommand) {
+    private fun validate(command: LedgerTransferCommand) {
         if (command.reference.isBlank()) {
             throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_REFERENCE", "Reference is required")
         }
@@ -135,22 +77,9 @@ class LedgerCommandService(
         }
     }
 
-    private fun enforceBalancedEntries(entries: List<JournalEntry>) {
-        val debitTotal = entries
-            .filter { it.entryType == EntryType.DEBIT }
-            .fold(BigDecimal.ZERO) { total, entry -> total + entry.amount }
-        val creditTotal = entries
-            .filter { it.entryType == EntryType.CREDIT }
-            .fold(BigDecimal.ZERO) { total, entry -> total + entry.amount }
-
-        if (debitTotal.compareTo(creditTotal) != 0) {
-            throw ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "UNBALANCED_JOURNAL", "Debit and credit entries must balance")
-        }
-    }
-
     private fun toIdempotentResponse(
         existing: LedgerTransaction,
-        command: TransferCommand,
+        command: LedgerTransferCommand,
     ): LedgerTransferResponse {
         if (existing.fromAccount.accountNumber != command.fromAccount ||
             existing.toAccount.accountNumber != command.toAccount ||
@@ -162,23 +91,13 @@ class LedgerCommandService(
         return existing.toResponse(duplicate = true)
     }
 
-    private fun LedgerTransaction.toResponse(duplicate: Boolean): LedgerTransferResponse {
-        return LedgerTransferResponse(
-            transactionId = id ?: error("transaction id must be assigned"),
-            reference = reference,
-            fromAccount = fromAccount.accountNumber,
-            toAccount = toAccount.accountNumber,
-            amount = amount,
-            status = status.name,
-            duplicate = duplicate,
-            createdAt = createdAt,
-        )
-    }
+    private fun resolvePersistenceConflict(
+        command: LedgerTransferCommand,
+        ex: RuntimeException,
+    ): LedgerTransferResponse {
+        val existing = ledgerTransactionRepository.findByReference(command.reference)
+            ?: throw ex
 
-    private data class TransferCommand(
-        val reference: String,
-        val fromAccount: String,
-        val toAccount: String,
-        val amount: BigDecimal,
-    )
+        return toIdempotentResponse(existing, command)
+    }
 }

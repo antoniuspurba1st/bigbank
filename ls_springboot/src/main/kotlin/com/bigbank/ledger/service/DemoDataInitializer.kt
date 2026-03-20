@@ -16,18 +16,21 @@ class DemoDataInitializer(
     private val logger = LoggerFactory.getLogger(javaClass)
 
     override fun run(vararg args: String) {
-        if (accountRepository.count() > 0) {
+        val demoAccounts = listOf(
+            Account(accountNumber = "ACC-001", ownerName = "Alice"),
+            Account(accountNumber = "ACC-002", ownerName = "Bob"),
+            Account(accountNumber = "ACC-003", ownerName = "Charlie"),
+        )
+
+        val missingAccounts = demoAccounts.filter { account ->
+            accountRepository.findByAccountNumber(account.accountNumber) == null
+        }
+
+        if (missingAccounts.isEmpty()) {
             return
         }
 
-        accountRepository.saveAll(
-            listOf(
-                Account(accountNumber = "ACC-001", ownerName = "Alice"),
-                Account(accountNumber = "ACC-002", ownerName = "Bob"),
-                Account(accountNumber = "ACC-003", ownerName = "Charlie"),
-            ),
-        )
-
-        logger.info("seeded demo ledger accounts")
+        accountRepository.saveAll(missingAccounts)
+        logger.info("seeded {} demo ledger accounts", missingAccounts.size)
     }
 }

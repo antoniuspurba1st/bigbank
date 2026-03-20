@@ -28,11 +28,14 @@ func (h *HTTPHandler) Routes() http.Handler {
 	return mux
 }
 
-func (h *HTTPHandler) handleHealth(w http.ResponseWriter, _ *http.Request) {
+func (h *HTTPHandler) handleHealth(w http.ResponseWriter, r *http.Request) {
+	correlationID := correlationIDFromRequest(r)
+	w.Header().Set("X-Correlation-Id", correlationID)
+
 	writeJSON(w, http.StatusOK, model.APIResponse{
 		Status:        "success",
 		Message:       "Transaction service is healthy",
-		CorrelationID: "",
+		CorrelationID: correlationID,
 		Data: map[string]string{
 			"service": "transaction",
 			"status":  "UP",

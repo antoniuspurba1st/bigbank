@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 
@@ -41,14 +42,17 @@ class LedgerController(
     }
 
     @GetMapping("/transactions")
-    fun transactions(httpRequest: HttpServletRequest): ApiResponse<List<TransactionListItem>> {
+    fun transactions(
+        httpRequest: HttpServletRequest,
+        @RequestParam(name = "limit", required = false) limit: Int?,
+    ): ApiResponse<List<TransactionListItem>> {
         val correlationId = httpRequest.getAttribute(CorrelationIdFilter.CORRELATION_ID_ATTRIBUTE) as String
 
         return ApiResponse(
             status = "success",
             message = "Transactions fetched successfully",
             correlationId = correlationId,
-            data = ledgerQueryService.listTransactions(),
+            data = ledgerQueryService.listTransactions(limit ?: LedgerQueryService.DEFAULT_LIMIT),
         )
     }
 }

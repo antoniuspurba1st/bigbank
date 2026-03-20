@@ -1,0 +1,61 @@
+version: "3"
+
+tasks:
+  run:
+    desc: Run the Kotlin ledger service
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-ledger.ps1
+
+  run:ledger:
+    desc: Run the Kotlin ledger service
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-ledger.ps1
+
+  run:fraud:
+    desc: Run the Rust fraud service
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-fraud.ps1
+
+  run:transaction:
+    desc: Run the Go transaction service
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-transaction.ps1
+
+  test:
+    desc: Run all backend tests
+    deps:
+      - test:ledger
+      - test:transaction
+      - test:fraud
+
+  test:ledger:
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-ledger.ps1
+
+  test:transaction:
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-transaction.ps1
+
+  test:fraud:
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-fraud.ps1
+
+  smoke:
+    desc: Start backend stack, run smoke test, then stop services
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-test.ps1
+
+  concurrency:
+    desc: Run end-to-end duplicate-request concurrency validation
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/concurrency-test.ps1 -Requests 10
+
+  load:
+    desc: Run lightweight load test harness without Docker
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/load-test.ps1 -Requests 40 -Concurrency 8
+
+  db:verify:
+    desc: Verify PostgreSQL schema and constraints
+    cmds:
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-db.ps1

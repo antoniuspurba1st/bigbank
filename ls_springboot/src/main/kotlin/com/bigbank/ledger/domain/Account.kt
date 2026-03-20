@@ -5,12 +5,18 @@ import jakarta.persistence.Entity
 import jakarta.persistence.GeneratedValue
 import jakarta.persistence.GenerationType
 import jakarta.persistence.Id
+import jakarta.persistence.Index
 import jakarta.persistence.Table
 import java.time.Instant
 import java.util.UUID
 
 @Entity
-@Table(name = "accounts")
+@Table(
+    name = "accounts",
+    indexes = [
+        Index(name = "idx_accounts_account_number", columnList = "account_number"),
+    ],
+)
 class Account(
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
