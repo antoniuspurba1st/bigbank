@@ -1,5 +1,7 @@
 # DD Bank
 
+![BigBank](bigbank.webp)
+
 DD Bank is a mini core banking system built as a polyglot backend project.
 
 End-to-end request flow:

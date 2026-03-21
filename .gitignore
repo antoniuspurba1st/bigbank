@@ -8,7 +8,7 @@ Thumbs.db
 # VSCODE
 # =========================
 .vscode/
-
+.kilo/
 # =========================
 # GO (transaction-service)
 # =========================
@@ -43,6 +43,8 @@ ls_springboot/out/
 # LOGS
 # =========================
 *.log
+output.txt
+transaction-service/build_errors.txt
 
 # =========================
 # TEMP FILES
@@ -50,3 +52,15 @@ ls_springboot/out/
 tmp/
 temp/
 .runtime/
+
+# =========================
+# LOCAL ARTIFACTS / CACHE
+# =========================
+**/.gocache/
+**/.task/
+
+# =========================
+# ROOT LOCAL SCRIPTS
+# =========================
+/fix_auth.py
+/fix2.py
