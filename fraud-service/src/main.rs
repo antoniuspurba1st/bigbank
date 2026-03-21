@@ -2,12 +2,50 @@ use actix_web::middleware::Logger;
 use actix_web::{App, HttpRequest, HttpResponse, HttpServer, get, post, web};
 use chrono::Utc;
 use log::info;
+use prometheus::{Counter, CounterVec, Histogram, HistogramVec, Registry, TextEncoder, Encoder};
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::sync::Mutex;
 use uuid::Uuid;
 
 const CORRELATION_ID_HEADER: &str = "X-Correlation-Id";
 const DEFAULT_FRAUD_REJECTION_LIMIT: f64 = 1_000_000.0;
+
+// Phase 8: Prometheus metrics registry
+struct MetricsRegistry {
+    request_count: CounterVec,
+    error_count: CounterVec,
+    request_duration: HistogramVec,
+}
+
+impl MetricsRegistry {
+    fn new(registry: &Registry) -> Result<Self, prometheus::Error> {
+        let request_count = CounterVec::new(
+            prometheus::Opts::new("http_requests_total", "Total number of HTTP requests"),
+            &["method", "endpoint", "status"],
+        )?;
+        registry.register(Box::new(request_count.clone()))?;
+
+        let error_count = CounterVec::new(
+            prometheus::Opts::new("http_errors_total", "Total number of HTTP errors"),
+            &["method", "endpoint", "status"],
+        )?;
+        registry.register(Box::new(error_count.clone()))?;
+
+        let request_duration = HistogramVec::new(
+            prometheus::HistogramOpts::new("http_request_duration_seconds", "HTTP request duration in seconds"),
+            &["method", "endpoint"],
+        )?;
+        registry.register(Box::new(request_duration.clone()))?;
+
+        Ok(MetricsRegistry {
+            request_count,
+            error_count,
+            request_duration,
+        })
+    }
+}
+
 
 #[derive(Deserialize)]
 struct FraudRequest {
@@ -208,13 +246,13 @@ fn is_valid_reference(reference: &str) -> bool {
 
 fn is_valid_account(account: &str) -> bool {
     let length = account.len();
-    if !(3..=32).contains(&length) {
+    if !(3..=64).contains(&length) {
         return false;
     }
 
     account
         .chars()
-        .all(|character| character.is_ascii_uppercase() || character.is_ascii_digit() || character == '-')
+        .all(|character| character.is_ascii_alphanumeric() || character == '-')
 }
 
 fn fraud_rejection_limit() -> f64 {

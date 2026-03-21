@@ -27,7 +27,7 @@ func TestPostJSONRetriesServerErrorUntilSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	httpClient := newJSONHTTPClient(server.URL, time.Second, 1)
+	httpClient := newJSONHTTPClient(server.URL, time.Second, 2)
 	response := model.FraudCheckResponse{}
 
 	err := httpClient.postJSON(
@@ -60,7 +60,7 @@ func TestPostJSONTimeoutReturnsUnavailable(t *testing.T) {
 	}))
 	defer server.Close()
 
-	httpClient := newJSONHTTPClient(server.URL, 20*time.Millisecond, 2)
+	httpClient := newJSONHTTPClient(server.URL, 20*time.Millisecond, 3)
 	response := model.FraudCheckResponse{}
 
 	err := httpClient.postJSON(
@@ -88,7 +88,7 @@ func TestPostJSONServerErrorStopsAfterConfiguredRetries(t *testing.T) {
 	}))
 	defer server.Close()
 
-	httpClient := newJSONHTTPClient(server.URL, time.Second, 2)
+	httpClient := newJSONHTTPClient(server.URL, time.Second, 3)
 	response := model.FraudCheckResponse{}
 
 	err := httpClient.postJSON(

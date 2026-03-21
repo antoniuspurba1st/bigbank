@@ -9,6 +9,7 @@ import org.springframework.dao.DataAccessException
 import org.springframework.http.HttpStatus
 import org.springframework.orm.jpa.JpaSystemException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -19,8 +20,9 @@ class LedgerCommandService(
     private val ledgerPostingExecutor: LedgerPostingExecutor,
 ) {
     private val referencePattern = Regex("^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
-    private val accountPattern = Regex("^[A-Z0-9-]{3,32}$")
+    private val accountPattern = Regex("^[A-Z0-9-]{3,64}$")
 
+    @Transactional
     fun transfer(request: LedgerTransferRequest, correlationId: String): LedgerTransferResponse {
         val command = normalize(request)
         validate(command)
@@ -97,7 +99,7 @@ class LedgerCommandService(
             throw ApiException(HttpStatus.CONFLICT, "REFERENCE_CONFLICT", "Reference already used for a different transfer")
         }
 
-        return existing.toResponse(duplicate = true)
+        return mapToResponse(existing, duplicate = true)
     }
 
     private fun resolvePersistenceConflict(
@@ -108,5 +110,18 @@ class LedgerCommandService(
             ?: throw ex
 
         return toIdempotentResponse(existing, command)
+    }
+
+    private fun mapToResponse(transaction: LedgerTransaction, duplicate: Boolean): LedgerTransferResponse {
+        return LedgerTransferResponse(
+            transactionId = transaction.id ?: error("transaction id must be assigned"),
+            reference = transaction.reference,
+            fromAccount = transaction.fromAccount.accountNumber,
+            toAccount = transaction.toAccount.accountNumber,
+            amount = transaction.amount,
+            status = transaction.status.name,
+            duplicate = duplicate,
+            createdAt = transaction.createdAt,
+        )
     }
 }

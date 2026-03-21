@@ -3,6 +3,7 @@ package com.bigbank.ledger.service
 import com.bigbank.ledger.api.ApiErrorResponse
 import com.bigbank.ledger.config.CorrelationIdFilter
 import jakarta.servlet.http.HttpServletRequest
+import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -12,17 +13,22 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
+    private val logger = LoggerFactory.getLogger(javaClass)
 
     @ExceptionHandler(ApiException::class)
     fun handleApiException(
         ex: ApiException,
         request: HttpServletRequest,
     ): ResponseEntity<ApiErrorResponse> {
+        logger.info(
+            "api_exception code={} status={} message={}",
+            ex.code,
+            ex.httpStatus.value(),
+            ex.message,
+        )
         return ResponseEntity.status(ex.httpStatus).body(
             ApiErrorResponse(
-                code = ex.code,
-                message = ex.message,
-                correlationId = correlationId(request),
+                error = ex.message ?: "An error occurred",
             ),
         )
     }
@@ -31,9 +37,7 @@ class GlobalExceptionHandler {
     fun handleMalformedRequest(request: HttpServletRequest): ResponseEntity<ApiErrorResponse> {
         return ResponseEntity.badRequest().body(
             ApiErrorResponse(
-                code = "MALFORMED_REQUEST",
-                message = "Request body is malformed or missing required fields",
-                correlationId = correlationId(request),
+                error = "Request body is malformed or missing required fields",
             ),
         )
     }
@@ -42,9 +46,7 @@ class GlobalExceptionHandler {
     fun handleIntegrityViolation(request: HttpServletRequest): ResponseEntity<ApiErrorResponse> {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(
             ApiErrorResponse(
-                code = "DATA_INTEGRITY_VIOLATION",
-                message = "The request violated a database constraint",
-                correlationId = correlationId(request),
+                error = "The request violated a database constraint",
             ),
         )
     }
@@ -53,9 +55,7 @@ class GlobalExceptionHandler {
     fun handleUnexpectedException(request: HttpServletRequest): ResponseEntity<ApiErrorResponse> {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
             ApiErrorResponse(
-                code = "INTERNAL_ERROR",
-                message = "Unexpected server error",
-                correlationId = correlationId(request),
+                error = "An unexpected server error occurred",
             ),
         )
     }

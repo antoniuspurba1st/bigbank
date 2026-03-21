@@ -17,6 +17,8 @@ class DemoDataInitializer(
 
     override fun run(vararg args: String) {
         val demoAccounts = listOf(
+            Account(accountNumber = "SYSTEM", ownerName = "System Account"),
+            Account(accountNumber = "EXTERNAL", ownerName = "External Account"),
             Account(accountNumber = "ACC-001", ownerName = "Alice"),
             Account(accountNumber = "ACC-002", ownerName = "Bob"),
             Account(accountNumber = "ACC-003", ownerName = "Charlie"),

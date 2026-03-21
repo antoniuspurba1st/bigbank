@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"transaction-service/internal/model"
+
+	"github.com/google/uuid"
 )
 
 type fraudChecker interface {
@@ -25,7 +27,7 @@ type TransferService struct {
 
 var (
 	referencePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
-	accountPattern   = regexp.MustCompile(`^[A-Z0-9-]{3,32}$`)
+	accountPattern   = regexp.MustCompile(`^[A-Za-z0-9-]{3,64}$`)
 )
 
 func NewTransferService(fraudClient fraudChecker, ledgerClient ledgerTransferer) *TransferService {
@@ -116,6 +118,69 @@ func (s *TransferService) Execute(
 			Reference:     ledgerResult.Reference,
 			Amount:        ledgerResult.Amount,
 			FraudDecision: fraudDecision.Decision,
+			LedgerStatus:  ledgerResult.Status,
+			TransactionID: ledgerResult.TransactionID,
+			Duplicate:     ledgerResult.Duplicate,
+			CreatedAt:     ledgerResult.CreatedAt,
+		},
+	}, nil
+}
+
+func (s *TransferService) Topup(
+	ctx context.Context,
+	correlationID string,
+	userAccount string,
+	amount float64,
+) (model.APIResponse, *model.AppError) {
+	if userAccount == "" {
+		return model.APIResponse{}, validationError("INVALID_ACCOUNT", "Destination account is required")
+	}
+	if amount <= 0 {
+		return model.APIResponse{}, validationError("INVALID_AMOUNT", "Amount must be greater than zero")
+	}
+	if amount > 10000000 {
+		return model.APIResponse{}, validationError("INVALID_AMOUNT", "Amount exceeds top-up limit")
+	}
+
+	reference := "TOPUP-" + uuid.New().String()
+	topupRequest := model.TransferRequest{
+		Reference:   reference,
+		FromAccount: "EXTERNAL",
+		ToAccount:   userAccount,
+		Amount:      amount,
+	}
+
+	normalized, validationErr := normalizeAndValidate(topupRequest)
+	if validationErr != nil {
+		return model.APIResponse{}, validationErr
+	}
+
+	ledgerResult, ledgerErr := s.ledgerClient.Transfer(ctx, correlationID, normalized)
+	if ledgerErr != nil {
+		log.Printf(
+			"correlation_id=%s event=topup_failed code=%s error=%s",
+			correlationID,
+			ledgerErr.Code,
+			ledgerErr.Error(),
+		)
+		return model.APIResponse{}, ledgerErr
+	}
+
+	log.Printf(
+		"correlation_id=%s event=topup_completed reference=%s transaction_id=%s",
+		correlationID,
+		ledgerResult.Reference,
+		ledgerResult.TransactionID,
+	)
+
+	return model.APIResponse{
+		Status:        "success",
+		Message:       "Top-up processed successfully",
+		CorrelationID: correlationID,
+		Data: model.TransferResult{
+			Reference:     ledgerResult.Reference,
+			Amount:        ledgerResult.Amount,
+			FraudDecision: "na",
 			LedgerStatus:  ledgerResult.Status,
 			TransactionID: ledgerResult.TransactionID,
 			Duplicate:     ledgerResult.Duplicate,

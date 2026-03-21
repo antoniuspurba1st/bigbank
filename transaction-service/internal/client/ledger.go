@@ -15,9 +15,9 @@ type LedgerClient struct {
 	httpClient *jsonHTTPClient
 }
 
-func NewLedgerClient(baseURL string, timeout time.Duration, retries int) *LedgerClient {
+func NewLedgerClient(baseURL string, timeout time.Duration, maxAttempts int) *LedgerClient {
 	return &LedgerClient{
-		httpClient: newJSONHTTPClient(baseURL, timeout, retries),
+		httpClient: newJSONHTTPClient(baseURL, timeout, maxAttempts),
 	}
 }
 

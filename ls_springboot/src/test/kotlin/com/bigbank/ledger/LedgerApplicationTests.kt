@@ -67,8 +67,8 @@ class LedgerApplicationTests(
 
         accountRepository.saveAll(
             listOf(
-                Account(accountNumber = "ACC-100", ownerName = "Dina"),
-                Account(accountNumber = "ACC-200", ownerName = "Eka"),
+                Account(accountNumber = "ACC-100", ownerName = "Dina", balance = BigDecimal("10000.00")),
+                Account(accountNumber = "ACC-200", ownerName = "Eka", balance = BigDecimal("5000.00")),
             ),
         )
 
@@ -119,6 +119,13 @@ class LedgerApplicationTests(
         assertEquals(1, transactions.size)
         assertEquals(2, journalEntries.size)
         assertEquals(0, journalEntries[0].amount.compareTo(journalEntries[1].amount))
+
+        val fromAccountAfter = accountRepository.findByAccountNumber("ACC-100")!!
+        val toAccountAfter = accountRepository.findByAccountNumber("ACC-200")!!
+
+        assertEquals(0, fromAccountAfter.balance.compareTo(BigDecimal("8500.00")))
+        assertEquals(0, toAccountAfter.balance.compareTo(BigDecimal("6500.00")))
+
         assertTrue(recordingSideEffect.await())
         assertEquals(1, applicationEvents.stream(TransactionCompletedEvent::class.java).count())
         assertEquals(reference, recordingSideEffect.capturedEvents().single().reference)

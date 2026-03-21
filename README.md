@@ -48,6 +48,7 @@ Main components:
 - Ledger service: `8080`
 - Transaction service: `8081`
 - Fraud service: `8082`
+- Web UI (Next.js): `3000`
 
 Supported runtime configuration:
 
@@ -85,6 +86,45 @@ $env:GOCACHE=(Join-Path (Get-Location) '.gocache')
 go run ./cmd/main.go
 ```
 
+### Quick Start (recommended)
+
+From project root:
+
+```powershell
+./start-all.ps1
+```
+
+This launches in separate PowerShell windows:
+
+- Ledger Service (Kotlin) on `8080`
+- Fraud Service (Rust) on `8082`
+- Transaction Service (Go) on `8081`
+- Web UI (Next.js) on `3000`
+
+Use this helper for fast local startup after dependencies are installed.
+
+### Production-like script mode (health-checked)
+
+You can also use the script-based orchestrator:
+
+```powershell
+./scripts/start-all.ps1
+```
+
+Key behavior:
+
+- Starts `ledger`, `fraud`, `transaction`, and optional `ui` processes in background.
+- Waits for service health checks before reporting success.
+- Stores process metadata in a local process registry for coordinated stop/restart flows.
+
+Useful flags:
+
+- `-SkipUi`
+- `-LedgerPort <port>`
+- `-TransactionPort <port>`
+- `-FraudPort <port>`
+- `-UiPort <port>`
+
 ## Task Runner
 
 If you already have `task` installed, this is the easiest no-Docker workflow:
@@ -120,7 +160,17 @@ The ledger ensures these demo accounts exist at startup:
 
 - Go:
   - `GET /health`
+  - `GET /ready`
+  - `GET /metrics`
   - `POST /transfer`
+  - `POST /topup`
+  - `GET /transactions`
+  - `POST /auth/register`
+  - `POST /auth/login`
+  - `GET /auth/me`
+  - `PUT /auth/phone`
+  - `PUT /auth/password`
+  - `PUT /auth/email`
 - Rust:
   - `GET /health`
   - `POST /fraud/check`
@@ -128,6 +178,20 @@ The ledger ensures these demo accounts exist at startup:
   - `GET /health`
   - `POST /ledger/transfer`
   - `GET /ledger/transactions`
+
+## Observability
+
+Transaction service now exposes Prometheus metrics via:
+
+- `GET /metrics`
+
+The HTTP middleware records:
+
+- request totals (by method, path, status)
+- error totals (by method, path, status)
+- request duration histogram (by method, path)
+
+Correlation IDs are propagated through request handling and included in structured logs.
 
 ## Example Transfer Request
 

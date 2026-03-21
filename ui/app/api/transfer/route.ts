@@ -8,11 +8,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const payload = await request.json();
+    const userEmail = request.headers.get("x-user-email") || "";
+    const userId = request.headers.get("x-user-id") || "";
     const upstream = await fetch(`${transactionServiceUrl()}/transfer`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-correlation-id": correlationId,
+        "x-user-email": userEmail,
+        "x-user-id": userId,
       },
       body: JSON.stringify(payload),
       cache: "no-store",

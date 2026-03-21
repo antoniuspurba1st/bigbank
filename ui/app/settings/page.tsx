@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getSession, setSession } from "@/lib/session";
-import { transactionServiceUrl } from "@/lib/server-api";
+import { getSession } from "@/lib/session";
 
 export default function SettingsPage() {
   const [session, setSessionState] = useState<{ email: string } | null>(null);
@@ -23,11 +22,11 @@ export default function SettingsPage() {
     setResult(null);
 
     try {
-      const response = await fetch(`${transactionServiceUrl()}/auth/phone`, {
+      const response = await fetch(`/api/auth/phone`, {
         method: "PUT",
         headers: { 
           "Content-Type": "application/json",
-          "X-User-Email": session.email // Basic prototype identity header match backend expectation
+          "X-User-Email": session.email,
         },
         body: JSON.stringify({ phone }),
       });
@@ -78,21 +77,65 @@ export default function SettingsPage() {
               </svg>
             )}
             <p className="font-medium">{result.message}</p>
+            {result.status === "error" && (
+              <button
+                onClick={handleUpdateProfile}
+                disabled={isLoading}
+                className="mt-2 px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center gap-1"
+              >
+                {isLoading ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Retrying...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Retry
+                  </>
+                )}
+              </button>
+            )}
           </div>
         )}
 
         <form onSubmit={handleUpdateProfile} className="space-y-6">
-          <div>
-            <label className="eyebrow block mb-1 text-slate-500">
-              Email Address (Cannot be changed)
-            </label>
-            <input
-              type="email"
-              value={session?.email || "Loading..."}
-              disabled
-              className="w-full p-2.5 border border-slate-200 rounded-md bg-slate-50 text-slate-500 cursor-not-allowed"
-            />
-          </div>
+          <div className="space-y-1">
+  <label
+    htmlFor="email"
+    className="block text-sm font-medium text-slate-600"
+  >
+    Email Address
+    <span className="ml-1 text-xs text-slate-400">
+      (cannot be changed)
+    </span>
+  </label>
+
+  <input
+    id="email"
+    name="email"
+    type="email"
+    value={session?.email ?? ""}
+    readOnly
+    aria-readonly="true"
+    className="
+      w-full
+      rounded-md
+      border border-slate-200
+      bg-slate-50
+      px-3 py-2.5
+      text-slate-500
+      focus:outline-none
+      focus:ring-0
+      cursor-default
+    "
+  />
+</div>
 
           <div>
             <label htmlFor="phone" className="eyebrow block mb-1">
@@ -104,7 +147,7 @@ export default function SettingsPage() {
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="e.g. +1 555-0199"
-              className="w-full p-2.5 border border-[color:var(--line)] rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]"
+              className="w-full p-2.5 border border-(--line) rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-(--accent)"
             />
             <p className="text-xs text-slate-500 mt-1">
               Used for important account notifications.
@@ -115,7 +158,7 @@ export default function SettingsPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="px-6 py-2.5 rounded-lg bg-[color:var(--accent)] text-sm font-medium text-white transition hover:bg-[color:var(--accent-strong)] disabled:bg-slate-300 flex items-center gap-2"
+              className="px-6 py-2.5 rounded-lg bg-(--accent) text-sm font-medium text-white transition hover:bg-(--accent-strong) disabled:bg-slate-300 flex items-center gap-2"
             >
               {isLoading ? (
                 <>

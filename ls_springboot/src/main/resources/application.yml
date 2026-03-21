@@ -1,11 +1,11 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/ddbank
-    username: postgres
-    password: 123123
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/ddbank}
+    username: ${DATABASE_USER:postgres}
+    password: ${DATABASE_PASSWORD:}
 
   jpa:
     open-in-view: false
@@ -17,3 +17,20 @@ spring:
         format_sql: true
         jdbc:
           time_zone: UTC
+
+# Phase 8: Metrics Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,ready,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true

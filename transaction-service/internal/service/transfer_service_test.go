@@ -105,6 +105,75 @@ func TestExecuteRejectedTransferSkipsLedger(t *testing.T) {
 	}
 }
 
+func TestTopupCallsLedgerDirectly(t *testing.T) {
+	ledger := &ledgerTransfererStub{
+		result: model.LedgerTransferResult{
+			TransactionID: "tx-topup-1",
+			Reference:     "TOPUP-ref",
+			Amount:        200,
+			Status:        "COMPLETED",
+			Duplicate:     false,
+		},
+	}
+
+	service := NewTransferService(&fraudCheckerStub{}, ledger)
+	response, err := service.Topup(context.Background(), "corr-5", "ACC-1", 200)
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if response.Status != "success" {
+		t.Fatalf("expected success status, got %s", response.Status)
+	}
+
+	if ledger.calls != 1 {
+		t.Fatalf("expected ledger client to be called once, got %d", ledger.calls)
+	}
+}
+
+func TestTopupAcceptsLongAccountNumber(t *testing.T) {
+	ledger := &ledgerTransfererStub{
+		result: model.LedgerTransferResult{
+			TransactionID: "tx-topup-2",
+			Reference:     "TOPUP-ref-2",
+			Amount:        150,
+			Status:        "COMPLETED",
+			Duplicate:     false,
+		},
+	}
+
+	service := NewTransferService(&fraudCheckerStub{}, ledger)
+	longAccount := "ACC-" + "01234567-89ab-cdef-0123-456789abcdef"
+	response, err := service.Topup(context.Background(), "corr-6", longAccount, 150)
+
+	if err != nil {
+		t.Fatalf("expected no error for long account, got %v", err)
+	}
+
+	if response.Status != "success" {
+		t.Fatalf("expected success status, got %s", response.Status)
+	}
+
+	if ledger.calls != 1 {
+		t.Fatalf("expected ledger client to be called once, got %d", ledger.calls)
+	}
+}
+
+func TestTopupRejectsInvalidAmount(t *testing.T) {
+	service := NewTransferService(&fraudCheckerStub{}, &ledgerTransfererStub{})
+
+	_, err := service.Topup(context.Background(), "corr-6", "ACC-1", 0)
+
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	if err.Code != "INVALID_AMOUNT" {
+		t.Fatalf("expected INVALID_AMOUNT, got %s", err.Code)
+	}
+}
+
 func TestExecuteRejectsInvalidAmount(t *testing.T) {
 	service := NewTransferService(&fraudCheckerStub{}, &ledgerTransfererStub{})
 

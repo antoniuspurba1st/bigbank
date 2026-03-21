@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
-import { setSession } from "@/lib/session";
+import { setSession, clearSession } from "@/lib/session";
 import { transactionServiceUrl } from "@/lib/server-api";
 
 export default function LoginPage() {
@@ -20,7 +20,7 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const response = await fetch(`${transactionServiceUrl()}/auth/login`, {
+      const response = await fetch(`/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -31,7 +31,8 @@ export default function LoginPage() {
       if (!response.ok) {
         setError(data.message || "Invalid email or password.");
       } else {
-        setSession(data.user.email);
+        clearSession(); // Clear any existing session
+        setSession(data.user.id, data.user.email);
         router.push("/");
       }
     } catch (err) {
@@ -54,6 +55,30 @@ export default function LoginPage() {
         {error && (
           <div className="mb-4 p-3 bg-red-50 text-red-700 border border-red-200 rounded-md text-sm font-medium">
             {error}
+            <div className="mt-2">
+              <button
+                onClick={handleLogin}
+                disabled={isLoading}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center gap-1"
+              >
+                {isLoading ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Retrying...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    Retry Login
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
 
@@ -67,7 +92,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full p-2 border border-[color:var(--line)] rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]"
+              className="w-full p-2 border border-(--line) rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-(--accent)"
               placeholder="user@ddbank.com"
               required
             />
@@ -81,7 +106,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full p-2 border border-[color:var(--line)] rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]"
+              className="w-full p-2 border border-(--line) rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-(--accent)"
               placeholder="********"
               required
             />
@@ -90,7 +115,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={isLoading || !email || !password}
-              className="w-full rounded-full bg-[color:var(--accent)] px-5 py-3 text-sm font-medium text-white transition hover:bg-[color:var(--accent-strong)] disabled:bg-slate-300 flex justify-center items-center"
+              className="w-full rounded-full bg-(--accent) px-5 py-3 text-sm font-medium text-white transition hover:bg-(--accent-strong) disabled:bg-slate-300 flex justify-center items-center"
             >
               {isLoading ? (
                 <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -104,8 +129,8 @@ export default function LoginPage() {
           </div>
         </form>
         
-        <div className="mt-6 text-center text-sm text-slate-500 border-t border-[color:var(--line)] pt-4">
-          <p>Don't have an account? <Link href="/register" className="text-[color:var(--accent)] hover:underline font-medium">Register here</Link></p>
+        <div className="mt-6 text-center text-sm text-slate-500 border-t border-(--line) pt-4">
+          <p>Don't have an account? <Link href="/register" className="text-(--accent) hover:underline font-medium">Register here</Link></p>
         </div>
       </div>
     </div>

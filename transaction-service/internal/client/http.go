@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -15,18 +17,22 @@ import (
 )
 
 type jsonHTTPClient struct {
-	baseURL string
-	client  *http.Client
-	retries int
+	baseURL     string
+	client      *http.Client
+	maxAttempts int
 }
 
-func newJSONHTTPClient(baseURL string, timeout time.Duration, retries int) *jsonHTTPClient {
+func newJSONHTTPClient(baseURL string, timeout time.Duration, maxAttempts int) *jsonHTTPClient {
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+
 	return &jsonHTTPClient{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		client: &http.Client{
 			Timeout: timeout,
 		},
-		retries: retries,
+		maxAttempts: maxAttempts,
 	}
 }
 
@@ -49,7 +55,7 @@ func (c *jsonHTTPClient) postJSON(
 
 	url := c.baseURL + path
 
-	for attempt := 0; attempt <= c.retries; attempt++ {
+	for attempt := 1; attempt <= c.maxAttempts; attempt++ {
 		req, requestErr := http.NewRequestWithContext(
 			ctx,
 			http.MethodPost,
@@ -70,9 +76,20 @@ func (c *jsonHTTPClient) postJSON(
 
 		resp, callErr := c.client.Do(req)
 		if callErr != nil {
-			if attempt < c.retries {
-				time.Sleep(backoff(attempt))
+			if attempt < c.maxAttempts {
+				log.Printf("retry attempt=%d/%d due=network error: %v", attempt, c.maxAttempts, callErr)
+				time.Sleep(500 * time.Millisecond)
 				continue
+			}
+
+			var netErr net.Error
+			if errors.As(callErr, &netErr) && netErr.Timeout() {
+				return &model.AppError{
+					StatusCode: http.StatusGatewayTimeout,
+					Code:       "SERVICE_TIMEOUT",
+					Message:    "Service timeout",
+					Err:        callErr,
+				}
 			}
 
 			return &model.AppError{
@@ -90,8 +107,9 @@ func (c *jsonHTTPClient) postJSON(
 
 		var appErr *model.AppError
 		if errors.As(readErr, &appErr) {
-			if appErr.StatusCode >= http.StatusInternalServerError && attempt < c.retries {
-				time.Sleep(backoff(attempt))
+			if appErr.StatusCode >= http.StatusInternalServerError && attempt < c.maxAttempts {
+				log.Printf("retry attempt=%d/%d due=server error %d", attempt, c.maxAttempts, appErr.StatusCode)
+				time.Sleep(500 * time.Millisecond)
 				continue
 			}
 
@@ -125,7 +143,7 @@ func (c *jsonHTTPClient) getJSON(
 		urlValue += "?" + query.Encode()
 	}
 
-	for attempt := 0; attempt <= c.retries; attempt++ {
+	for attempt := 1; attempt <= c.maxAttempts; attempt++ {
 		req, requestErr := http.NewRequestWithContext(
 			ctx,
 			http.MethodGet,
@@ -145,9 +163,20 @@ func (c *jsonHTTPClient) getJSON(
 
 		resp, callErr := c.client.Do(req)
 		if callErr != nil {
-			if attempt < c.retries {
-				time.Sleep(backoff(attempt))
+			if attempt < c.maxAttempts {
+				log.Printf("retry attempt=%d/%d due=network error: %v", attempt, c.maxAttempts, callErr)
+				time.Sleep(500 * time.Millisecond)
 				continue
+			}
+
+			var netErr net.Error
+			if errors.As(callErr, &netErr) && netErr.Timeout() {
+				return &model.AppError{
+					StatusCode: http.StatusGatewayTimeout,
+					Code:       "SERVICE_TIMEOUT",
+					Message:    "Service timeout",
+					Err:        callErr,
+				}
 			}
 
 			return &model.AppError{
@@ -165,8 +194,9 @@ func (c *jsonHTTPClient) getJSON(
 
 		var appErr *model.AppError
 		if errors.As(readErr, &appErr) {
-			if appErr.StatusCode >= http.StatusInternalServerError && attempt < c.retries {
-				time.Sleep(backoff(attempt))
+			if appErr.StatusCode >= http.StatusInternalServerError && attempt < c.maxAttempts {
+				log.Printf("retry attempt=%d/%d due=server error %d", attempt, c.maxAttempts, appErr.StatusCode)
+				time.Sleep(500 * time.Millisecond)
 				continue
 			}
 
@@ -203,11 +233,11 @@ func decodeResponse(resp *http.Response, output interface{}) error {
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		apiErr := model.APIError{}
-		if json.Unmarshal(responseBody, &apiErr) == nil && apiErr.Message != "" {
+		if json.Unmarshal(responseBody, &apiErr) == nil && apiErr.Error != "" {
 			return &model.AppError{
 				StatusCode: resp.StatusCode,
-				Code:       apiErr.Code,
-				Message:    apiErr.Message,
+				Code:       "DOWNSTREAM_REQUEST_FAILED",
+				Message:    apiErr.Error,
 			}
 		}
 

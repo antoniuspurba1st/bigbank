@@ -13,9 +13,9 @@ type FraudClient struct {
 	httpClient *jsonHTTPClient
 }
 
-func NewFraudClient(baseURL string, timeout time.Duration, retries int) *FraudClient {
+func NewFraudClient(baseURL string, timeout time.Duration, maxAttempts int) *FraudClient {
 	return &FraudClient{
-		httpClient: newJSONHTTPClient(baseURL, timeout, retries),
+		httpClient: newJSONHTTPClient(baseURL, timeout, maxAttempts),
 	}
 }
 

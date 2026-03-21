@@ -38,6 +38,11 @@ class LedgerPostingExecutor(
             throw ApiException(HttpStatus.BAD_REQUEST, "SAME_ACCOUNT_TRANSFER", "Source and destination accounts must differ")
         }
 
+        // Prevent negative balance: check if source account has sufficient funds
+        if (fromAccount.balance < command.amount) {
+            throw ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_FUNDS", "Insufficient funds")
+        }
+
         val transaction = LedgerTransaction(
             reference = command.reference,
             fromAccount = fromAccount,
@@ -64,6 +69,11 @@ class LedgerPostingExecutor(
         enforceBalancedEntries(listOf(debitEntry, creditEntry))
         ledgerTransferPersistenceHook.beforeJournalPersist(savedTransaction, listOf(debitEntry, creditEntry))
         journalEntryRepository.saveAll(listOf(debitEntry, creditEntry))
+
+        // Update account balances in the ledger accounts table for quick lookup.
+        fromAccount.balance = fromAccount.balance.subtract(command.amount)
+        toAccount.balance = toAccount.balance.add(command.amount)
+        accountRepository.saveAll(listOf(fromAccount, toAccount))
 
         logger.info(
             "transaction_event_emitting reference={} transactionId={} correlationId={}",
@@ -93,7 +103,16 @@ class LedgerPostingExecutor(
             correlationId,
         )
 
-        return savedTransaction.toResponse(duplicate = false)
+        return LedgerTransferResponse(
+            transactionId = savedTransaction.id ?: error("transaction id must be assigned"),
+            reference = savedTransaction.reference,
+            fromAccount = fromAccount.accountNumber,
+            toAccount = toAccount.accountNumber,
+            amount = savedTransaction.amount,
+            status = savedTransaction.status.name,
+            duplicate = false,
+            createdAt = savedTransaction.createdAt,
+        )
     }
 
     private fun enforceBalancedEntries(entries: List<JournalEntry>) {
@@ -105,7 +124,7 @@ class LedgerPostingExecutor(
             .fold(BigDecimal.ZERO) { total, entry -> total + entry.amount }
 
         if (debitTotal.compareTo(creditTotal) != 0) {
-            throw ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "UNBALANCED_JOURNAL", "Debit and credit entries must balance")
+            throw ApiException(HttpStatus.BAD_REQUEST, "ACCOUNTING_VALIDATION_FAILED", "Accounting validation failed")
         }
     }
 }

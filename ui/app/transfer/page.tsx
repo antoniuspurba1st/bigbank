@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { transactionServiceUrl } from "@/lib/server-api";
+import { getSession, getAuthHeaders } from "@/lib/session";
 
 type TransferResult = {
   status: "success" | "rejected" | "error";
@@ -12,6 +13,7 @@ type TransferResult = {
 export default function TransferPage() {
   const [fromAccount, setFromAccount] = useState("ACC-001");
   const [toAccount, setToAccount] = useState("ACC-002");
+  const [userAccount, setUserAccount] = useState("");
   const [amount, setAmount] = useState("");
   const [reference, setReference] = useState("tx-ui-");
 
@@ -20,6 +22,34 @@ export default function TransferPage() {
   
   // Confirmation state
   const [showConfirmation, setShowConfirmation] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function fetchProfile() {
+      try {
+        const response = await fetch("/api/auth/me", {
+          cache: "no-store",
+          headers: getAuthHeaders(),
+        });
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (active && data.account_number) {
+          setUserAccount(data.account_number);
+          setFromAccount(data.account_number);
+        }
+      } catch (error) {
+        // ignore, keep defaults
+      }
+    }
+
+    fetchProfile();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleInitialSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,21 +76,28 @@ export default function TransferPage() {
 
     const parsedAmount = parseFloat(amount);
     
+    const requestFromAccount = userAccount || fromAccount;
+
     const transferRequest = {
-      from_account: fromAccount,
+      from_account: requestFromAccount,
       to_account: toAccount,
       amount: parsedAmount,
       reference: `${reference}${Date.now()}`,
     };
 
     try {
-      // Use proxy endpoint instead of direct URL if required by environment, 
-      // but sticking to instructions to ensure robust UI implementation.
+      const session = getSession();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      
+      if (session) {
+        headers["X-User-Email"] = session.email;
+      }
+
       const response = await fetch("/api/transfer", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify(transferRequest),
       });
 
@@ -108,7 +145,7 @@ export default function TransferPage() {
                   type="text"
                   value={fromAccount}
                   onChange={(e) => setFromAccount(e.target.value)}
-                  className="w-full p-2 border border-[color:var(--line)] rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]"
+                  className="w-full p-2 border border-(--line) rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-(--accent)"
                 />
               </div>
               <div>
@@ -120,7 +157,7 @@ export default function TransferPage() {
                   type="text"
                   value={toAccount}
                   onChange={(e) => setToAccount(e.target.value)}
-                  className="w-full p-2 border border-[color:var(--line)] rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]"
+                  className="w-full p-2 border border-(--line) rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-(--accent)"
                 />
               </div>
               <div>
@@ -134,7 +171,7 @@ export default function TransferPage() {
                   min="0.01"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="w-full p-2 border border-[color:var(--line)] rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]"
+                  className="w-full p-2 border border-(--line) rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-(--accent)"
                   placeholder="0.00"
                   required
                 />
@@ -148,7 +185,7 @@ export default function TransferPage() {
                   type="text"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
-                  className="w-full p-2 border border-[color:var(--line)] rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)]"
+                  className="w-full p-2 border border-(--line) rounded-md bg-white/50 focus:outline-none focus:ring-2 focus:ring-(--accent)"
                   placeholder="e.g., ref-001"
                   required
                 />
@@ -159,7 +196,7 @@ export default function TransferPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full rounded-full bg-[color:var(--accent)] px-5 py-3 text-sm font-medium text-white transition hover:bg-[color:var(--accent-strong)] disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full rounded-full bg-(--accent) px-5 py-3 text-sm font-medium text-white transition hover:bg-(--accent-strong) disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {isLoading ? (
                   <>
@@ -179,7 +216,7 @@ export default function TransferPage() {
         
         {result && (
           <div className="glass-panel p-6 rounded-lg h-fit">
-            <h3 className="eyebrow border-b border-[color:var(--line)] pb-2">Transaction Result</h3>
+            <h3 className="eyebrow border-b border-(--line) pb-2">Transaction Result</h3>
             <div
               className={`mt-4 p-5 rounded-md border ${
                 result.status === "success"
@@ -200,6 +237,33 @@ export default function TransferPage() {
               </div>
               
               <p className="text-sm mt-1">{result.message}</p>
+              
+              {(result.status === "rejected" || result.status === "error") && (
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={handleConfirmedSubmit}
+                    disabled={isLoading}
+                    className="px-3 py-1.5 text-xs font-medium text-white bg-(--accent) hover:bg-(--accent-strong) rounded-md transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    {isLoading ? (
+                      <>
+                        <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Retrying...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        Retry
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
               
               {result.data && result.status !== "success" && (
                 <div className="mt-4 bg-white/60 p-3 rounded text-xs font-mono overflow-auto border border-black/5">
@@ -226,7 +290,7 @@ export default function TransferPage() {
                 <div className="font-medium text-slate-800 text-right">{toAccount}</div>
                 
                 <div className="text-slate-500">Amount:</div>
-                <div className="font-semibold text-lg text-[color:var(--accent)] text-right">
+                <div className="font-semibold text-lg text-(--accent) text-right">
                   ${parseFloat(amount).toFixed(2)}
                 </div>
               </div>
@@ -247,7 +311,7 @@ export default function TransferPage() {
               <button
                 type="button"
                 onClick={handleConfirmedSubmit}
-                className="px-4 py-2 text-sm font-medium text-white bg-[color:var(--accent)] hover:bg-[color:var(--accent-strong)] rounded-lg shadow-sm transition-colors"
+                className="px-4 py-2 text-sm font-medium text-white bg-(--accent) hover:bg-(--accent-strong) rounded-lg shadow-sm transition-colors"
               >
                 Confirm Transfer
               </button>

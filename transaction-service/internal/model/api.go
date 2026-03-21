@@ -8,10 +8,7 @@ type APIResponse struct {
 }
 
 type APIError struct {
-	Status        string `json:"status"`
-	Code          string `json:"code"`
-	Message       string `json:"message"`
-	CorrelationID string `json:"correlation_id"`
+	Error string `json:"error"`
 }
 
 type AppError struct {

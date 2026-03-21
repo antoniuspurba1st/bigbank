@@ -19,12 +19,19 @@ export default function TransactionsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch("http://localhost:8080/ledger/transactions");
+      const response = await fetch("/api/transactions");
       if (!response.ok) {
         throw new Error("Failed to fetch transactions");
       }
       const data = await response.json();
-      setTransactions(data);
+      const items = data?.data?.items || [];
+      setTransactions(items.map((item: any) => ({
+        id: item.transaction_id,
+        reference: item.reference,
+        amount: item.amount,
+        status: item.status,
+        created_at: item.created_at,
+      })));
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -43,7 +50,7 @@ export default function TransactionsPage() {
         <button
           onClick={fetchTransactions}
           disabled={isLoading}
-          className="rounded-full bg-white border border-[color:var(--line)] px-5 py-2 text-sm font-medium text-slate-900 transition hover:bg-gray-50 disabled:opacity-50"
+          className="rounded-full bg-white border border-(--line) px-5 py-2 text-sm font-medium text-slate-900 transition hover:bg-gray-50 disabled:opacity-50"
         >
           {isLoading ? "Refreshing..." : "Refresh"}
         </button>
@@ -58,7 +65,7 @@ export default function TransactionsPage() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[color:var(--line)]">
+                <tr className="border-b border-(--line)">
                   <th className="text-left py-2 eyebrow">Reference</th>
                   <th className="text-left py-2 eyebrow">Amount</th>
                   <th className="text-left py-2 eyebrow">Timestamp</th>
@@ -66,7 +73,7 @@ export default function TransactionsPage() {
               </thead>
               <tbody>
                 {transactions.map((txn) => (
-                  <tr key={txn.id} className="border-b border-[color:var(--line)]">
+                  <tr key={txn.id} className="border-b border-(--line)">
                     <td className="py-3 font-mono text-sm">{txn.reference}</td>
                     <td className="py-3">
                       {new Intl.NumberFormat("en-US", {
